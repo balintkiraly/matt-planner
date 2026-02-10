@@ -252,6 +252,9 @@ function App() {
   );
   const [isSelectingArea, setIsSelectingArea] = useState(false);
 
+  // Setup = add/edit points and combos. Hike = only mark visits and see score.
+  const [isHikeMode, setIsHikeMode] = useState(false);
+
   // Derived score via pure business logic ------------------------------
   const raceState: RaceState = useMemo(
     () =>
@@ -491,17 +494,44 @@ function App() {
   const clearSelection = useCallback(() => setSelectionBounds(null), []);
 
   return (
-    <div className="h-screen w-screen bg-slate-950 text-slate-50">
+    <div className="h-screen w-screen bg-slate-950 text-slate-50 overflow-hidden">
       <div className="grid h-full grid-cols-1 md:grid-cols-[420px_minmax(0,1fr)]">
         {/* Left pane: configuration + scoring */}
         <div className="flex flex-col border-b border-slate-800 md:border-b-0 md:border-r bg-slate-900/80 backdrop-blur">
           <header className="px-4 py-3 border-b border-slate-800">
-            <h1 className="text-lg font-semibold tracking-tight">
-              MATT planner
-            </h1>
-            <p className="mt-1 text-xs text-slate-400">
-              Enter checkpoints from your race sheet, add bonus combos, then
-              mark visits and track your score.
+            <div className="flex items-center justify-between gap-3">
+              <h1 className="text-lg font-semibold tracking-tight">
+                MATT planner
+              </h1>
+              <div className="flex rounded border border-slate-700 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setIsHikeMode(false)}
+                  className={`rounded px-2 py-1 text-xs font-medium ${
+                    !isHikeMode
+                      ? "bg-slate-600 text-white"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Setup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsHikeMode(true)}
+                  className={`rounded px-2 py-1 text-xs font-medium ${
+                    isHikeMode
+                      ? "bg-slate-600 text-white"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Hike
+                </button>
+              </div>
+            </div>
+            <p className="mt-1 text-[10px] text-slate-500">
+              {isHikeMode
+                ? "Tracking only - mark visits, no edit/delete"
+                : "Add points and combos from your race sheet"}
             </p>
           </header>
 
@@ -544,6 +574,7 @@ function App() {
               </div>
             </div>
           </section>
+          <section className="overflow-y-auto max-h-[calc(100vh-150px)]">
 
           {/* Area selection: draw a rectangle on the map to see score in that zone */}
           {selectionBounds && areaScore && (
@@ -574,8 +605,8 @@ function App() {
             </section>
           )}
 
-          {/* Color legend for point markers */}
-          {points.length > 0 && (
+          {/* Color legend for point markers (setup only) */}
+          {!isHikeMode && points.length > 0 && (
             <section className="px-4 py-2 border-b border-slate-800 space-y-1.5">
               <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap">
                 <span>Score:</span>
@@ -597,23 +628,23 @@ function App() {
                   title="High"
                 />
                 <span>high</span>
-              </div>
-              <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap">
                 <span
                   className="inline-block w-3 h-3 rounded-full shrink-0"
                   style={{ backgroundColor: COMBO_POINT_COLOR }}
                   title="In a combo"
                 />
-                <span>purple = in a combo</span>
+                <span>in a combo</span>
               </div>
             </section>
           )}
 
-          {/* Points: enter from your race sheet */}
+          {/* Points: in Setup show form + table with edit/delete; in Hike only list + visit checkbox */}
           <section className="px-4 py-3 border-b border-slate-800 space-y-3 overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Points (from race sheet)</h2>
-              {editingPointId && (
+              <h2 className="text-sm font-semibold">
+                {isHikeMode ? "Points" : "Points (from race sheet)"}
+              </h2>
+              {!isHikeMode && editingPointId && (
                 <button
                   className="text-xs text-slate-400 hover:text-slate-200 underline"
                   type="button"
@@ -624,6 +655,7 @@ function App() {
               )}
             </div>
 
+            {!isHikeMode && (
             <form
               className="space-y-2"
               onSubmit={(e) => {
@@ -745,13 +777,14 @@ function App() {
                 </button>
               </div>
             </form>
+            )}
 
             <div className="mt-3 max-h-40 overflow-y-auto border border-slate-800 rounded">
               {points.length === 0 ? (
                 <div className="p-2 text-xs text-slate-500">
-                  No points yet. Add each checkpoint from your race sheet (ID,
-                  score, task). Click the map to fill in coordinates if you have
-                  a paper map.
+                  {isHikeMode
+                    ? "No points loaded. Switch to Setup to add points."
+                    : "No points yet. Add each checkpoint from your race sheet (ID, score, task). Click the map to fill in coordinates if you have a paper map."}
                 </div>
               ) : (
                 <table className="w-full text-[11px]">
@@ -762,7 +795,9 @@ function App() {
                       <th className="px-2 py-1 text-left">Name</th>
                       <th className="px-2 py-1 text-right">Score</th>
                       <th className="px-2 py-1 text-left">Combo</th>
-                      <th className="px-2 py-1 text-right">Actions</th>
+                      {!isHikeMode && (
+                        <th className="px-2 py-1 text-right">Actions</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -808,22 +843,24 @@ function App() {
                               <span className="text-slate-600">—</span>
                             )}
                           </td>
-                          <td className="px-2 py-1 text-right space-x-1">
-                            <button
-                              className="text-xs text-slate-300 hover:underline"
-                              type="button"
-                              onClick={() => editPoint(point.id)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              className="text-xs text-red-400 hover:underline"
-                              type="button"
-                              onClick={() => deletePoint(point.id)}
-                            >
-                              Delete
-                            </button>
-                          </td>
+                          {!isHikeMode && (
+                            <td className="px-2 py-1 text-right space-x-1">
+                              <button
+                                className="text-xs text-slate-300 hover:underline"
+                                type="button"
+                                onClick={() => editPoint(point.id)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className="text-xs text-red-400 hover:underline"
+                                type="button"
+                                onClick={() => deletePoint(point.id)}
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -833,11 +870,13 @@ function App() {
             </div>
           </section>
 
-          {/* Bonus combinations */}
+          {/* Bonus combinations: in Setup show form + edit/delete; in Hike read-only list */}
           <section className="px-4 py-3 space-y-3 overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Bonus combinations (from sheet)</h2>
-              {editingBonusId && (
+              <h2 className="text-sm font-semibold">
+                {isHikeMode ? "Bonuses" : "Bonus combinations (from sheet)"}
+              </h2>
+              {!isHikeMode && editingBonusId && (
                 <button
                   className="text-xs text-slate-400 hover:text-slate-200 underline"
                   type="button"
@@ -848,6 +887,7 @@ function App() {
               )}
             </div>
 
+            {!isHikeMode && (
             <form
               className="space-y-2"
               onSubmit={(e) => {
@@ -937,12 +977,14 @@ function App() {
                 </button>
               </div>
             </form>
+            )}
 
             <div className="mt-3 max-h-40 overflow-y-auto border border-slate-800 rounded">
               {bonusCombinations.length === 0 ? (
                 <div className="p-2 text-xs text-slate-500">
-                  No bonus combos yet. Add any from your race sheet (e.g. visit
-                  points 1, 4, 9 for +200).
+                  {isHikeMode
+                    ? "No bonus combos."
+                    : "No bonus combos yet. Add any from your race sheet (e.g. visit points 1, 4, 9 for +200)."}
                 </div>
               ) : (
                 <ul className="divide-y divide-slate-800 text-[11px]">
@@ -979,22 +1021,24 @@ function App() {
                             >
                               {isCompleted ? "Completed" : "Incomplete"}
                             </div>
-                            <div className="mt-1 space-x-1">
-                              <button
-                                className="text-xs text-slate-300 hover:underline"
-                                type="button"
-                                onClick={() => editBonus(combo.id)}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                className="text-xs text-red-400 hover:underline"
-                                type="button"
-                                onClick={() => deleteBonus(combo.id)}
-                              >
-                                Delete
-                              </button>
-                            </div>
+                            {!isHikeMode && (
+                              <div className="mt-1 space-x-1">
+                                <button
+                                  className="text-xs text-slate-300 hover:underline"
+                                  type="button"
+                                  onClick={() => editBonus(combo.id)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="text-xs text-red-400 hover:underline"
+                                  type="button"
+                                  onClick={() => deleteBonus(combo.id)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </li>
@@ -1004,11 +1048,12 @@ function App() {
               )}
             </div>
           </section>
+          </section>
         </div>
 
         {/* Right pane: map view */}
         <div className="relative">
-          {/* Button to start area selection (drag on map to draw rectangle) */}
+          {/* Button to start area selection */}
           <div className="absolute top-2 right-2 z-[1000] flex flex-col gap-2">
             <button
               type="button"
@@ -1036,9 +1081,11 @@ function App() {
           >
             <MapInvalidateSize />
             <TileLayer url="https://{s}.map.turistautak.hu/tiles/turistautak/{z}/{x}/{y}.png" />
-            <MapClickHandler onMapClick={handleMapClick} />
+            {!isHikeMode && (
+              <MapClickHandler onMapClick={handleMapClick} />
+            )}
 
-            {/* Drag-to-select area: enable via button, then drag on map */}
+            {/* Drag-to-select area */}
             <MapAreaSelect
               active={isSelectingArea}
               onAreaSelected={handleAreaSelected}
@@ -1079,7 +1126,7 @@ function App() {
             })}
           </MapContainer>
 
-          <div className="pointer-events-none absolute inset-x-4 bottom-4 flex justify-end">
+          <div className="pointer-events-none absolute inset-x-4 bottom-4 flex justify-end z-[1000]">
             <div className="pointer-events-auto rounded bg-slate-900/80 px-3 py-2 text-[11px] text-slate-200 shadow-lg border border-slate-800">
               <div className="font-semibold mb-1">How to use</div>
               <ul className="list-disc pl-4 space-y-1">
@@ -1089,8 +1136,10 @@ function App() {
                 </li>
                 <li>Add bonus combos from the sheet, then mark points visited.</li>
                 <li>
-                  Click &quot;Select area&quot; then drag on the map to see score
-                  for that zone.
+                  <strong>Setup</strong>: add/edit points and combos; &quot;Select area&quot; to see score in a zone.
+                </li>
+                <li>
+                  <strong>Hike</strong>: only mark visits and see score; no edit/delete.
                 </li>
                 <li>Score and completed bonuses update automatically.</li>
               </ul>
