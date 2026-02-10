@@ -1,16 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
   useMapEvents,
   useMap,
   Rectangle,
-  FeatureGroup,
 } from "react-leaflet";
-import { EditControl } from "react-leaflet-draw";
 import type { LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import "leaflet-draw/dist/leaflet.draw.css";
 
 import type {
   BonusCombination,
@@ -77,6 +74,106 @@ function MapClickHandler({
     },
   });
   return null;
+}
+
+/** Drag-to-select area: when active, user drags on the map to set selection bounds. */
+function MapAreaSelect({
+  active,
+  onAreaSelected,
+  onCancel,
+}: {
+  active: boolean;
+  onAreaSelected: (bounds: SelectionBounds) => void;
+  onCancel?: () => void;
+}) {
+  const map = useMap();
+  const dragStartRef = useRef<{ lat: number; lng: number } | null>(null);
+  const dragEndRef = useRef<{ lat: number; lng: number } | null>(null);
+  const [previewBounds, setPreviewBounds] = useState<SelectionBounds | null>(null);
+
+  useMapEvents({
+    mousedown: active
+      ? (e: LeafletMouseEvent) => {
+          map.dragging.disable();
+          dragStartRef.current = { lat: e.latlng.lat, lng: e.latlng.lng };
+          dragEndRef.current = null;
+          setPreviewBounds(null);
+        }
+      : undefined,
+    mousemove: active
+      ? (e: LeafletMouseEvent) => {
+          const start = dragStartRef.current;
+          if (!start) return;
+          dragEndRef.current = { lat: e.latlng.lat, lng: e.latlng.lng };
+          const south = Math.min(start.lat, e.latlng.lat);
+          const north = Math.max(start.lat, e.latlng.lat);
+          const west = Math.min(start.lng, e.latlng.lng);
+          const east = Math.max(start.lng, e.latlng.lng);
+          setPreviewBounds({ south, north, west, east });
+        }
+      : undefined,
+    mouseup: active
+      ? () => {
+          map.dragging.enable();
+          const start = dragStartRef.current;
+          const end = dragEndRef.current;
+          if (start && end) {
+            const south = Math.min(start.lat, end.lat);
+            const north = Math.max(start.lat, end.lat);
+            const west = Math.min(start.lng, end.lng);
+            const east = Math.max(start.lng, end.lng);
+            // Ignore tiny clicks (no real drag)
+            if (north - south > 0.0001 || east - west > 0.0001) {
+              onAreaSelected({ south, north, west, east });
+            }
+          }
+          dragStartRef.current = null;
+          dragEndRef.current = null;
+          setPreviewBounds(null);
+        }
+      : undefined,
+  });
+
+  // Cancel on escape or when active becomes false
+  useEffect(() => {
+    if (!active) {
+      map.dragging.enable();
+      dragStartRef.current = null;
+      setPreviewBounds(null);
+      return;
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onCancel?.();
+        map.dragging.enable();
+        dragStartRef.current = null;
+        setPreviewBounds(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, map, onCancel]);
+
+  if (!active) return null;
+
+  return (
+    <>
+      {previewBounds && (
+        <Rectangle
+          bounds={[
+            [previewBounds.south, previewBounds.west],
+            [previewBounds.north, previewBounds.east],
+          ]}
+          pathOptions={{
+            color: "#38bdf8",
+            fillColor: "#38bdf8",
+            fillOpacity: 0.2,
+            weight: 2,
+          }}
+        />
+      )}
+    </>
+  );
 }
 
 // Default map centre – replace with the actual race area as needed.
@@ -153,6 +250,7 @@ function App() {
   const [selectionBounds, setSelectionBounds] = useState<SelectionBounds | null>(
     null
   );
+  const [isSelectingArea, setIsSelectingArea] = useState(false);
 
   // Derived score via pure business logic ------------------------------
   const raceState: RaceState = useMemo(
@@ -385,30 +483,10 @@ function App() {
     }));
   }, []);
 
-  // After drawing a rectangle, store bounds and remove the draw layer so we show our own Rectangle
-  const handleDrawCreated = useCallback(
-    (e: {
-      layer: {
-        getBounds: () => {
-          getSouth: () => number;
-          getNorth: () => number;
-          getWest: () => number;
-          getEast: () => number;
-        };
-        remove: () => void;
-      };
-    }) => {
-      const b = e.layer.getBounds();
-      setSelectionBounds({
-        south: b.getSouth(),
-        north: b.getNorth(),
-        west: b.getWest(),
-        east: b.getEast(),
-      });
-      e.layer.remove();
-    },
-    []
-  );
+  const handleAreaSelected = useCallback((bounds: SelectionBounds) => {
+    setSelectionBounds(bounds);
+    setIsSelectingArea(false);
+  }, []);
 
   const clearSelection = useCallback(() => setSelectionBounds(null), []);
 
@@ -930,6 +1008,26 @@ function App() {
 
         {/* Right pane: map view */}
         <div className="relative">
+          {/* Button to start area selection (drag on map to draw rectangle) */}
+          <div className="absolute top-2 right-2 z-[1000] flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setIsSelectingArea((v) => !v)}
+              className={`rounded border px-3 py-1.5 text-xs font-medium shadow ${
+                isSelectingArea
+                  ? "border-sky-500 bg-sky-600 text-white"
+                  : "border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700"
+              }`}
+            >
+              {isSelectingArea ? "Cancel (Esc)" : "Select area"}
+            </button>
+            {isSelectingArea && (
+              <span className="rounded bg-slate-900/95 px-2 py-1 text-[10px] text-slate-300">
+                Drag on map to draw rectangle
+              </span>
+            )}
+          </div>
+
           <MapContainer
             center={DEFAULT_CENTER}
             zoom={13}
@@ -940,22 +1038,14 @@ function App() {
             <TileLayer url="https://{s}.map.turistautak.hu/tiles/turistautak/{z}/{x}/{y}.png" />
             <MapClickHandler onMapClick={handleMapClick} />
 
-            {/* Draw rectangle to select area and see score for that zone */}
-            <FeatureGroup>
-              <EditControl
-                position="topright"
-                draw={{
-                  rectangle: true,
-                  polyline: false,
-                  polygon: false,
-                  circle: false,
-                  marker: false,
-                }}
-                onCreated={handleDrawCreated}
-              />
-            </FeatureGroup>
+            {/* Drag-to-select area: enable via button, then drag on map */}
+            <MapAreaSelect
+              active={isSelectingArea}
+              onAreaSelected={handleAreaSelected}
+              onCancel={() => setIsSelectingArea(false)}
+            />
 
-            {/* Show selection rectangle (we remove the draw layer after reading bounds) */}
+            {/* Show selection rectangle */}
             {selectionBounds && (
               <Rectangle
                 bounds={[
@@ -998,6 +1088,10 @@ function App() {
                   map to fill Lat/Lng if you have a map.
                 </li>
                 <li>Add bonus combos from the sheet, then mark points visited.</li>
+                <li>
+                  Click &quot;Select area&quot; then drag on the map to see score
+                  for that zone.
+                </li>
                 <li>Score and completed bonuses update automatically.</li>
               </ul>
             </div>
