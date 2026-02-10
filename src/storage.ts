@@ -43,7 +43,7 @@ export function loadRaceState(): PersistedRaceState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw == null) return { ...DEFAULT };
 
-    const data = JSON.parse(raw) as unknown;
+    const data = JSON.parse(raw) as Record<string, unknown>;
     if (data === null || typeof data !== "object") return { ...DEFAULT };
 
     const points = Array.isArray(data.points)
@@ -53,7 +53,9 @@ export function loadRaceState(): PersistedRaceState {
       ? data.bonusCombinations.filter(isBonusCombination)
       : DEFAULT.bonusCombinations;
     const visitedPointIds = Array.isArray(data.visitedPointIds)
-      ? data.visitedPointIds.filter((id): id is PointId => typeof id === "string")
+      ? (data.visitedPointIds as unknown[]).filter(
+          (id: unknown): id is PointId => typeof id === "string"
+        )
       : DEFAULT.visitedPointIds;
 
     return { points, bonusCombinations, visitedPointIds };
