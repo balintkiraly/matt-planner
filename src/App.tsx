@@ -6,6 +6,7 @@ import {
   useMap,
   Rectangle,
 } from "react-leaflet";
+import L from "leaflet";
 import type { LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -52,6 +53,36 @@ function interpolateHex(a: string, b: string, t: number): string {
   const g = Math.round(ag + (bg - ag) * t);
   const bl = Math.round(ab + (bb - ab) * t);
   return `#${[r, g, bl].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** Fits the map view to show all points when points exist (e.g. on load from localStorage). */
+function FitMapToPoints({ points }: { points: Point[] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (points.length === 0) return;
+    const lats = points.map((p) => p.lat);
+    const lngs = points.map((p) => p.lng);
+    let south = Math.min(...lats);
+    let north = Math.max(...lats);
+    let west = Math.min(...lngs);
+    let east = Math.max(...lngs);
+    // Single point or collinear: expand slightly so fitBounds has a valid area
+    const pad = 0.002;
+    if (north - south < pad) {
+      south -= pad / 2;
+      north += pad / 2;
+    }
+    if (east - west < pad) {
+      west -= pad / 2;
+      east += pad / 2;
+    }
+    const bounds = L.latLngBounds(
+      [south, west],
+      [north, east]
+    );
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+  }, [map, points]);
+  return null;
 }
 
 /** Ensures map size is valid after layout (e.g. in a flex/grid). Use once inside MapContainer. */
@@ -1096,6 +1127,7 @@ function App() {
             className="h-full w-full"
           >
             <MapInvalidateSize />
+            <FitMapToPoints points={points} />
             <TileLayer url="https://{s}.map.turistautak.hu/tiles/turistautak/{z}/{x}/{y}.png" />
             {!isHikeMode && (
               <MapClickHandler onMapClick={handleMapClick} />
